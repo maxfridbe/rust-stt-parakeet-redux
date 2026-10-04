@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Parakeet / Speech lab</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <a class="brand" href="./"
+          ><span class="brand-mark">p</span> parakeet<span class="brand-sub"
+            >/ redux</span
+          ></a
+        ><span class="runtime"><i></i> RUST → WEBASSEMBLY</span>
+      </header>
+      <main>
+        <div class="intro">
+          <div>
+            <p class="eyebrow">LOCAL SPEECH LAB <span>01</span></p>
+            <h1>Speech, <em>measured.</em></h1>
+            <p class="lede">
+              Your microphone. A model in your browser.<br />See what it hears,
+              and how fast it gets there.
+            </p>
+          </div>
+          <div class="privacy">
+            <span class="privacy-icon">↗</span>
+            <p>Audio stays here.<br /><span>Processed on your device.</span></p>
+          </div>
+        </div>
+        <section class="model-bar" aria-label="Model controls">
+          <div class="model-label">
+            <span class="small-label">MODEL</span
+            ><strong>Parakeet Redux <span>0.6B · ternary</span></strong>
+          </div>
+          <div class="model-state">
+            <span id="model-status" role="status"
+              >Ready to load · 178 MB weights</span
+            ><progress
+              id="download-progress"
+              max="1"
+              value="0"
+              hidden
+            ></progress>
+          </div>
+          <button id="load-model" class="button dark">
+            Load model <span>↓</span>
+          </button>
+        </section>
+        <div class="workspace">
+          <section class="capture panel" aria-labelledby="capture-title">
+            <div class="panel-heading">
+              <h2 id="capture-title">Audio input</h2>
+              <span class="tag" id="input-tag">MICROPHONE</span>
+            </div>
+            <div class="waveform">
+              <canvas id="waveform" aria-label="Microphone waveform"></canvas>
+              <div class="waveform-label">
+                <span id="capture-status">Waiting for a signal</span
+                ><span id="recording-clock">00:00.0</span>
+              </div>
+            </div>
+            <div class="capture-controls">
+              <button id="record" class="button record" disabled>
+                <span class="record-dot"></span> Start recording</button
+              ><button id="sample" class="button light" disabled>
+                Try a sample <span>↗</span>
+              </button>
+            </div>
+            <p class="capture-note">
+              Record up to 30 seconds. Stop to transcribe.
+            </p>
+            <div class="live-options">
+              <label
+                ><input id="live-mode" type="checkbox" checked /> Live
+                transcription</label
+              ><label
+                ><input id="echo-mode" type="checkbox" checked /> Echo completed
+                words</label
+              >
+              <p id="live-status">
+                Words are echoed after a stable preview or a pause.
+              </p>
+              <p>
+                Use headphones to keep synthesized speech out of the microphone.
+              </p>
+            </div>
+            <div class="input-footer">
+              <span
+                ><i id="mic-light"></i
+                ><span id="sample-rate">16 kHz model input</span></span
+              ><label class="file-button"
+                >Upload audio
+                <input id="audio-file" type="file" accept="audio/*" disabled
+              /></label>
+            </div>
+          </section>
+          <section
+            class="transcription panel"
+            aria-labelledby="transcript-title"
+          >
+            <div class="panel-heading">
+              <h2 id="transcript-title">Transcript</h2>
+              <span class="tag" id="transcript-state">AWAITING AUDIO</span>
+            </div>
+            <div
+              id="transcript"
+              class="transcript-body placeholder"
+              aria-live="polite"
+            >
+              A few words can tell you a lot.<span
+                >Load the model, then record something.<br />Your transcript
+                will appear here.</span
+              >
+            </div>
+            <div class="transcript-footer">
+              <span id="token-count">— tokens</span
+              ><button id="copy" class="text-button" disabled>
+                Copy text ↗
+              </button>
+            </div>
+          </section>
+        </div>
+        <section class="metrics" aria-label="Performance metrics">
+          <article>
+            <p>AUDIO DURATION</p>
+            <div><strong id="metric-audio">—</strong><span>s</span></div>
+            <small>Captured or uploaded audio</small>
+          </article>
+          <article>
+            <p>INFERENCE TIME</p>
+            <div><strong id="metric-inference">—</strong><span>s</span></div>
+            <small>Encoding + decoding in WASM</small>
+          </article>
+          <article class="speed-metric">
+            <p>PROCESSING SPEED</p>
+            <div><strong id="metric-speed">—</strong><span>×</span></div>
+            <small>Audio seconds / processing second</small>
+          </article>
+          <article>
+            <p>WASM MEMORY</p>
+            <div><strong id="metric-memory">—</strong><span>MiB</span></div>
+            <small>Allocated linear memory capacity</small>
+          </article>
+        </section>
+        <section class="details">
+          <div>
+            <p class="eyebrow">RUN HISTORY</p>
+            <h2>Every take, in context.</h2>
+          </div>
+          <div class="history-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>TAKE</th>
+                  <th>AUDIO</th>
+                  <th>INFERENCE</th>
+                  <th>SPEED</th>
+                  <th>RTF</th>
+                </tr>
+              </thead>
+              <tbody id="history">
+                <tr class="empty-history">
+                  <td colspan="5">
+                    Your first measurement starts with a recording.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <p id="error" role="alert" hidden></p>
+        <details class="settings">
+          <summary>Model location & runtime details</summary>
+          <label
+            >Model directory URL
+            <input
+              id="model-url"
+              value="/models/parakeet-redux"
+              spellcheck="false" /></label
+          ><label
+            >Browser speech voice
+            <select id="voice">
+              <option value="">Browser default (may use network)</option>
+            </select></label
+          >
+          <p id="runtime-details">
+            Single worker · CPU inference · no audio upload · 80 ms token
+            alignment
+          </p>
+          <p>
+            Model files are fetched from this URL. Microphone access needs
+            localhost or HTTPS. Loading is separate from inference timings.
+            Browser performance depends on your CPU and browser.
+          </p>
+          <p>
+            Live previews reprocess a growing utterance and may change.
+            Completed words are confirmed by two previews or an utterance
+            boundary, not by a streaming model. The last word waits for
+            confirmation. Browser voices marked “local” run on device; other
+            voices may send text to the browser's speech service.
+          </p>
+        </details>
+      </main>
+      <footer>
+        <span
+          >PARAKEET REDUX
+          <span class="muted">/ OPEN SPEECH, LOCAL FIRST</span></span
+        ><span>Built in Rust. Runs here.</span>
+      </footer>
+    </div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

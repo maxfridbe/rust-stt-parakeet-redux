@@ -1,0 +1,42 @@
+[package]
+name = "parakeet-redux"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Portable, pure Rust inference for Moondream Parakeet Redux"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "parakeet-redux"
+path = "src/bin/parakeet-redux.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+cli = ["dep:clap", "dep:hound"]
+wasm = ["dep:wasm-bindgen"]
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"], optional = true }
+half = { version = "2.6", default-features = false, features = ["std"] }
+hound = { version = "3.5", optional = true }
+ndarray = "0.16"
+rustfft = "6.4"
+safetensors = "0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+wasm-bindgen = { version = "=0.2.104", optional = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

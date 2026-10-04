@@ -1,0 +1,141 @@
+# Performance
+
+Measured on 2026-10-04 with the pinned Parakeet Redux checkpoint, using the
+committed 11-second, 16 kHz JFK speech fixture. These are measurements of this
+Rust implementation, not Photon's published performance numbers.
+
+## CPU processing speed
+
+| Runtime | Timed runs | Median inference | Audio / wall time | RTF |
+| --- | ---: | ---: | ---: | ---: |
+| Native Rust, container-built release binary | 5 | **2.468 s** | **4.46× real time** | 0.224 |
+| WebAssembly scalar, Node 22.11.0 | 3 | 17.763 s | 0.62× real time | 1.615 |
+| WebAssembly SIMD, Node 22.11.0 | 3 | **5.788 s** | **1.90× real time** | 0.526 |
+
+The shipped browser build enables `simd128`. That reduced median WASM inference
+time by approximately 67% compared with the scalar build (3.07× faster). No
+hand-written unsafe SIMD or native ML runtime is required.
+
+Each measurement includes feature extraction, subsampling, all 24 Conformer
+blocks, TDT decoding, and transcript/timestamp assembly. WASM timing also includes
+the JS/Rust call, PCM copying, and JSON parsing. Model loading is excluded. Each
+process loads the model once, runs one unmeasured warm-up, and then processes the
+same clip sequentially. All timed outputs are checked against the reference text;
+the WASM benchmark also checks all token IDs.
+
+Native runs: 2.468, 2.478, 2.446, 2.486, 2.455 seconds. WASM SIMD runs: 5.788,
+5.805, 5.771 seconds. Raw results are in [benchmarks/](benchmarks/).
+
+`Audio / wall time = audio seconds / inference seconds`, so higher is faster.
+`RTF = inference seconds / audio seconds`, so lower is faster and values below
+one mean the clip was processed faster than its duration.
+
+## Machine and build
+
+- AMD Ryzen 7 7700X: 8 physical cores, 16 logical CPUs, x86-64 Linux.
+- One inference thread; no Rayon, native BLAS, GPU, or worker pool. The browser
+  keeps that single thread in a Worker so the interface remains responsive.
+- CPU boost enabled; no CPU affinity or fixed-frequency governor was applied.
+- Rust 1.97.1, release optimization, thin LTO, one codegen unit.
+- Native build uses the generic Rust target, without `target-cpu=native`.
+- WASM build adds `-C target-feature=+simd128`; current mainstream browsers
+  support this instruction set. The scalar build remains possible.
+- Model revision: `2bf128600aac4b16946f7ed8372e56117fe5e23b`.
+
+These results describe one short English clip with warm filesystem/CPU caches.
+They are not a multilingual accuracy benchmark or a long-form throughput claim.
+Different CPUs, browsers, silence patterns, and token counts change processing
+time. In particular, decoding many tokens per frame costs more than blank-heavy
+audio.
+
+## Loading and memory
+
+Native loading, including local file reads, took 0.256 seconds. WASM SIMD loading,
+including local Node file reads and copying into WASM, took 0.411 seconds. Browser
+download time is separate and depends on the network: the four checkpoint files
+total 179,005,408 bytes.
+
+The speech fixture used **394.5 MiB of WASM linear memory capacity**. That value is
+allocated addressable WASM memory, not process RSS or total browser memory; JS
+download buffers and the browser engine consume additional memory. The native
+benchmark's process peak RSS is recorded in
+[benchmarks/native-resources.txt](benchmarks/native-resources.txt), including model
+loading and the warm-up. Encoder projection weights stay packed between calls;
+only one projection at a time is expanded to float32.
+
+The browser lab caps each recording/upload at 30 seconds. The native library can
+process longer recordings using VAD segmentation; its VAD scan uses 120-second
+blocks and can require substantially more memory than this short-clip benchmark.
+
+## Live microphone and voice echo
+
+The microphone lab stays open while inference runs in a Worker. It proposes a
+new preview every 1.5 seconds of speech, finalizes an utterance after 600 ms of
+silence, and caps a continuous utterance at 8 seconds. An energy threshold chooses
+interactive utterance boundaries; this is separate from the model's native
+long-recording VAD path.
+
+Only one inference runs at a time. New previews replace older queued previews for
+the same utterance; final utterances are preserved. A word is eligible for browser
+speech synthesis once it agrees across two previews and is followed by another
+word with sufficient audio context, or once an utterance is finalized. Already
+spoken words cannot be retracted if a later hypothesis changes.
+
+This is repeated offline inference over growing utterances, not a streaming
+encoder with cached states. Faster-than-real-time processing of an 11-second clip
+does **not** guarantee instant word feedback: short snapshots repeat model work,
+confirmation waits for context, and browser voice startup adds latency. The demo
+reports result age, inference speed, queue length, and the delay from word
+confirmation to the speech API's `onstart` event. Speech synthesis is supplied by
+the browser/OS and is not counted as Rust inference time. Use headphones to avoid
+feeding the synthesized voice back into the microphone.
+
+Chromium 153 was exercised with the sample, a simulated microphone, desktop and
+390-pixel mobile layouts, and instrumented browser speech API calls. Headless
+testing confirms the speech API is invoked; audible playback and installed
+voices depend on the user's browser and operating system.
+
+## Correctness gates
+
+- All 39 token IDs and start/end timestamps on the speech fixture match the
+  independent float32 PyTorch reference in native Rust and WASM.
+- The deterministic frontend fixture matches within `1e-4` absolute error.
+- Full encoder output on that fixture differs by at most `6.33e-8`.
+- Subsampling's maximum absolute difference is `0.00455`, on activations with
+  magnitudes reaching approximately 3,945; float32 accumulation order differs.
+- Real-weight VAD probabilities pass the reference check.
+
+The tests establish those fixtures, not universal numerical equivalence or WER.
+Photon hardware-specific activation quantization is not emulated; this port
+evaluates the published ternary weights with float32 activations.
+
+## Reproduce
+
+All Rust compilation and packaging can occur inside Podman:
+
+```sh
+sh scripts/download-model.sh
+sh scripts/build-container.sh
+dist/parakeet-benchmark models/parakeet-redux 5
+node scripts/benchmark-wasm.mjs 3
+node scripts/test-wasm.mjs
+```
+
+To measure native peak RSS on Linux:
+
+```sh
+/usr/bin/time -v dist/parakeet-benchmark models/parakeet-redux 5
+```
+
+Run these benchmarks sequentially, with other CPU-intensive tasks stopped. The
+native benchmark can also run inside the artifact container:
+
+```sh
+podman run --rm --entrypoint /artifacts/parakeet-benchmark \
+  -v "$PWD/models/parakeet-redux:/model:ro,Z" \
+  localhost/parakeet-redux-build /model 5
+```
+
+To build scalar WASM, run the WASM Cargo command without `RUSTFLAGS`, then rerun
+`wasm-bindgen` with the same version used in `Containerfile`. The committed
+container build intentionally publishes the faster SIMD variant.

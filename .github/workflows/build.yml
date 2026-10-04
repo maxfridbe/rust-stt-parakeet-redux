@@ -1,0 +1,85 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      validate_model:
+        description: Download the checkpoint and run real-weight regression tests
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  container-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test live word confirmation and microphone segmentation
+        run: npm test
+      - name: Build, lint, test and package with Podman
+        run: sh scripts/build-container.sh
+      - name: Validate real checkpoint inside Podman
+        if: github.event_name == 'workflow_dispatch' && inputs.validate_model
+        run: |
+          sh scripts/download-model.sh
+          podman build --target builder --tag localhost/parakeet-redux-tests --file Containerfile .
+          podman run --rm \
+            -v "$PWD/models/parakeet-redux:/model:ro,Z" \
+            -e PARAKEET_MODEL_DIR=/model \
+            localhost/parakeet-redux-tests \
+            cargo test --locked --release --lib -- --ignored --nocapture
+      - name: Upload Linux x86-64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: parakeet-redux-linux-x86_64
+          path: |
+            dist/parakeet-redux
+            dist/parakeet-benchmark
+            dist/LICENSE
+            dist/NOTICE
+            dist/README.md
+          if-no-files-found: error
+      - name: Upload browser WebAssembly and JavaScript bindings
+        uses: actions/upload-artifact@v4
+        with:
+          name: parakeet-redux-web
+          path: |
+            dist/web/
+            dist/demo/
+          if-no-files-found: error
+      - name: Upload artifact checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: parakeet-redux-checksums
+          path: dist/SHA256SUMS
+          if-no-files-found: error
+      - name: Upload GitHub Pages site
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/site
+
+  deploy-demo:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: container-build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    steps:
+      - name: Deploy microphone demo
+        id: deployment
+        uses: actions/deploy-pages@v4

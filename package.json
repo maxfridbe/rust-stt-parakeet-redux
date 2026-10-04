@@ -1,0 +1,9 @@
+{
+  "name": "parakeet-redux-speech-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test web-demo/*.test.mjs",
+    "demo": "node scripts/serve-demo.mjs"
+  }
+}

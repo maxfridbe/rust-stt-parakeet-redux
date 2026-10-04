@@ -1,0 +1,200 @@
+{
+  "text": "And so, my fellow Americans, ask not what what your country can do for you, ask what you can do for your country.",
+  "emissions": [
+    {
+      "token_id": 1976,
+      "frame": 3,
+      "duration": 4
+    },
+    {
+      "token_id": 547,
+      "frame": 7,
+      "duration": 3
+    },
+    {
+      "token_id": 7877,
+      "frame": 10,
+      "duration": 2
+    },
+    {
+      "token_id": 1103,
+      "frame": 12,
+      "duration": 2
+    },
+    {
+      "token_id": 309,
+      "frame": 16,
+      "duration": 1
+    },
+    {
+      "token_id": 530,
+      "frame": 17,
+      "duration": 2
+    },
+    {
+      "token_id": 596,
+      "frame": 19,
+      "duration": 3
+    },
+    {
+      "token_id": 3213,
+      "frame": 22,
+      "duration": 3
+    },
+    {
+      "token_id": 404,
+      "frame": 25,
+      "duration": 4
+    },
+    {
+      "token_id": 667,
+      "frame": 29,
+      "duration": 4
+    },
+    {
+      "token_id": 7877,
+      "frame": 37,
+      "duration": 1
+    },
+    {
+      "token_id": 279,
+      "frame": 42,
+      "duration": 3
+    },
+    {
+      "token_id": 583,
+      "frame": 45,
+      "duration": 3
+    },
+    {
+      "token_id": 1491,
+      "frame": 52,
+      "duration": 4
+    },
+    {
+      "token_id": 3470,
+      "frame": 64,
+      "duration": 2
+    },
+    {
+      "token_id": 3470,
+      "frame": 66,
+      "duration": 4
+    },
+    {
+      "token_id": 3629,
+      "frame": 70,
+      "duration": 2
+    },
+    {
+      "token_id": 867,
+      "frame": 74,
+      "duration": 2
+    },
+    {
+      "token_id": 331,
+      "frame": 76,
+      "duration": 1
+    },
+    {
+      "token_id": 958,
+      "frame": 77,
+      "duration": 1
+    },
+    {
+      "token_id": 7893,
+      "frame": 78,
+      "duration": 1
+    },
+    {
+      "token_id": 2059,
+      "frame": 82,
+      "duration": 3
+    },
+    {
+      "token_id": 458,
+      "frame": 85,
+      "duration": 4
+    },
+    {
+      "token_id": 509,
+      "frame": 89,
+      "duration": 4
+    },
+    {
+      "token_id": 1180,
+      "frame": 93,
+      "duration": 4
+    },
+    {
+      "token_id": 7877,
+      "frame": 98,
+      "duration": 4
+    },
+    {
+      "token_id": 279,
+      "frame": 102,
+      "duration": 2
+    },
+    {
+      "token_id": 583,
+      "frame": 104,
+      "duration": 4
+    },
+    {
+      "token_id": 3470,
+      "frame": 108,
+      "duration": 3
+    },
+    {
+      "token_id": 1180,
+      "frame": 111,
+      "duration": 4
+    },
+    {
+      "token_id": 2059,
+      "frame": 115,
+      "duration": 3
+    },
+    {
+      "token_id": 458,
+      "frame": 118,
+      "duration": 3
+    },
+    {
+      "token_id": 509,
+      "frame": 121,
+      "duration": 3
+    },
+    {
+      "token_id": 3629,
+      "frame": 124,
+      "duration": 2
+    },
+    {
+      "token_id": 867,
+      "frame": 126,
+      "duration": 1
+    },
+    {
+      "token_id": 331,
+      "frame": 127,
+      "duration": 2
+    },
+    {
+      "token_id": 958,
+      "frame": 129,
+      "duration": 1
+    },
+    {
+      "token_id": 7893,
+      "frame": 130,
+      "duration": 1
+    },
+    {
+      "token_id": 7883,
+      "frame": 134,
+      "duration": 2
+    }
+  ]
+}

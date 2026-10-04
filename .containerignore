@@ -1,0 +1,17 @@
+*
+!Cargo.toml
+!Cargo.lock
+!LICENSE
+!NOTICE
+!README.md
+!src
+!src/**
+!tests
+!tests/**
+!examples
+!examples/**
+!web-demo
+!web-demo/**
+!scripts
+!scripts/build-artifacts.sh
+!Containerfile

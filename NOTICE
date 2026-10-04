@@ -1,0 +1,14 @@
+Parakeet Redux Rust inference implementation
+
+Architecture and signal-processing equations were checked against Hugging Face
+Transformers' Parakeet implementation (Copyright 2025 The HuggingFace Inc. team,
+Apache License 2.0). Reference revision:
+0a896aa41bba78f92338db21cc468fe043888657
+
+The model and ternary packing specification are from moondream/parakeet-redux,
+based on NVIDIA parakeet-tdt-0.6b-v3. The model is licensed CC-BY-4.0; its license
+is separate from the source code license. Checkpoint weights are not included.
+
+The JFK test recording is an excerpt of John F. Kennedy's 1961 inaugural address,
+a United States federal government work, distributed by the Transformers.js
+documentation dataset. See tests/fixtures/README.md for its source and processing.
