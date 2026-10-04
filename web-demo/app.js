@@ -40,6 +40,7 @@ const state = {
   workerStartedAt: null,
   workerStage: null,
   capture: null,
+  firstTextMs: null,
 };
 let segmenter;
 let stopTimer;
@@ -48,9 +49,11 @@ let sampleRate = 16000;
 
 function updatePreviewPolicy() {
   previewPolicy.mode = element("preview-mode").value;
+  previewPolicy.shortPhrases = element("phrase-length").value === "short";
   element("preview-status").textContent = previewPolicy.description;
 }
 element("preview-mode").onchange = updatePreviewPolicy;
+element("phrase-length").onchange = updatePreviewPolicy;
 updatePreviewPolicy();
 
 if (!["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)) {
@@ -79,6 +82,7 @@ function updateControls() {
     !state.ready || state.recording || state.stopping || working;
   element("audio-file").disabled = element("sample").disabled;
   element("live-mode").disabled = state.recording || state.stopping || working;
+  element("phrase-length").disabled = element("live-mode").disabled;
   element("record").classList.toggle("is-recording", state.recording);
   element("record").innerHTML =
     `<span class="record-dot"></span> ${state.recording ? "Stop recording" : "Start recording"}`;
@@ -98,7 +102,11 @@ function updateQueueStatus() {
     (sum, job) => sum + job.samples.length / job.rate,
     0,
   );
-  const queued = `${queuedSeconds.toFixed(1)}s audio waiting`;
+  const collectingSeconds =
+    state.recording && element("live-mode").checked
+      ? (segmenter?.length ?? 0) / sampleRate
+      : 0;
+  const queued = `${queuedSeconds.toFixed(1)}s queued · ${collectingSeconds.toFixed(1)}s collecting`;
   if (!state.busy) {
     element("queue-status").textContent = state.recording
       ? `Listening · ${queued}`
@@ -114,7 +122,7 @@ function updateQueueStatus() {
     `${stage} · ${age.toFixed(1)}s since submission · ${queued}`;
 }
 setInterval(() => {
-  if (state.busy) updateQueueStatus();
+  if (state.busy || state.recording) updateQueueStatus();
 }, 250);
 
 element("load-model").onclick = () => {
@@ -189,6 +197,7 @@ worker.onerror = (event) => {
 
 function resetSession() {
   state.capture = null;
+  state.firstTextMs = null;
   state.session++;
   state.chunks = [];
   state.finalized.clear();
@@ -197,6 +206,7 @@ function resetSession() {
   echo.cancel();
   element("echo-status").textContent = "";
   element("latency-summary").textContent = "Timing the next result…";
+  element("first-text").textContent = "—";
   clearError();
   element("transcript").classList.remove("placeholder");
   element("transcript").textContent = "Listening…";
@@ -221,6 +231,8 @@ function enqueue(snapshot) {
     captureSampleRate: snapshot.rate,
     queueDepth: state.pending.length,
     previewMode: previewPolicy.mode,
+    phraseLength: element("phrase-length").value,
+    boundary: snapshot.boundary ?? null,
   });
   updateControls();
   processNext();
@@ -315,12 +327,18 @@ function updateMetrics(data, job, receivedAt) {
   element("token-count").textContent =
     `${data.result.tokens.length} tokens · ${job.final ? "final" : "preview"}`;
   const timing = pipelineTiming(job, data, receivedAt);
+  if (state.capture && state.firstTextMs == null && data.result.text.trim()) {
+    state.firstTextMs = performance.now() - state.capture.firstPacketAt;
+    element("first-text").textContent =
+      `${(state.firstTextMs / 1000).toFixed(2)} s`;
+  }
   diagnostics.record("result", {
     id: job.id,
     final: job.final,
     audioSeconds: duration,
     queueDepth: state.pending.length,
     memoryBytes: data.memoryBytes,
+    firstTextMs: state.firstTextMs,
     ...timing,
     ...data.inputTiming,
   });
@@ -370,13 +388,29 @@ async function startRecording() {
   resetSession();
   state.stopping = true;
   updateControls();
-  segmenter = new LiveSegmenter(enqueue, (duration, elapsed) =>
-    previewPolicy.allows(
-      duration,
-      elapsed,
-      !state.busy && !state.pending.length,
-    ),
+  const shortPhrases = element("phrase-length").value === "short";
+  segmenter = new LiveSegmenter(
+    enqueue,
+    (duration, elapsed) =>
+      previewPolicy.allows(
+        duration,
+        elapsed,
+        !state.busy && !state.pending.length,
+      ),
+    {
+      maxSeconds: 8,
+      targetSeconds: shortPhrases ? 3 : 8,
+      pauseSeconds: shortPhrases ? 0.35 : 0.6,
+      canFinalize: () => !state.busy && !state.pending.length,
+    },
   );
+  diagnostics.record("capture-start", {
+    segmentationVersion: "short-phrases-v1",
+    live: element("live-mode").checked,
+    maxSeconds: segmenter.maxSeconds,
+    targetSeconds: segmenter.targetSeconds,
+    pauseSeconds: segmenter.pauseSeconds,
+  });
   try {
     sampleRate = await microphone.start((samples, rate) => {
       const receivedAt = performance.now();
@@ -501,6 +535,10 @@ element("copy-diagnostics").onclick = async () => {
       (sum, job) => sum + job.samples.length / job.rate,
       0,
     ),
+    collectingAudioSeconds:
+      state.recording && element("live-mode").checked
+        ? (segmenter?.length ?? 0) / sampleRate
+        : 0,
     capture: state.capture && {
       sampleCount: state.capture.sampleCount,
       sampleRate: state.capture.sampleRate,

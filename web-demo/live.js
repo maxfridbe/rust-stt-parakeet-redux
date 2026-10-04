@@ -4,9 +4,22 @@ import { timestamp } from "./timing.js";
 // Each utterance has one final job. The caller can skip previews before we copy
 // their audio; final audio is always delivered, even when inference is busy.
 export class LiveSegmenter {
-  constructor(onSnapshot, canPreview = (_, elapsed) => elapsed >= 1.5) {
+  constructor(
+    onSnapshot,
+    canPreview = (_, elapsed) => elapsed >= 1.5,
+    {
+      maxSeconds = 8,
+      targetSeconds = maxSeconds,
+      pauseSeconds = 0.6,
+      canFinalize = () => true,
+    } = {},
+  ) {
     this.onSnapshot = onSnapshot;
     this.canPreview = canPreview;
+    this.maxSeconds = maxSeconds;
+    this.targetSeconds = targetSeconds;
+    this.pauseSeconds = pauseSeconds;
+    this.canFinalize = canFinalize;
     this.id = 0;
     this.reset();
   }
@@ -18,6 +31,7 @@ export class LiveSegmenter {
     this.lastPreview = 0;
     this.audioStartedAt = null;
     this.speechEndedAt = null;
+    this.peakRms = 0;
   }
   add(samples, rate, receivedAt = timestamp()) {
     this.rate = rate;
@@ -29,7 +43,15 @@ export class LiveSegmenter {
       samples.reduce((sum, sample) => sum + sample * sample, 0) /
         samples.length,
     );
-    if (rms >= 0.008) {
+    this.peakRms = Math.max(
+      rms,
+      this.peakRms * Math.exp(-samples.length / rate / 2),
+    );
+    // Follow speech volume so a little background hiss does not hide pauses.
+    // The fixed floor still handles quiet microphones; the ceiling limits how
+    // much a loud transient can raise the threshold for subsequent speech.
+    const speechThreshold = Math.max(0.008, Math.min(0.02, this.peakRms * 0.1));
+    if (rms >= speechThreshold) {
       this.heardSpeech = true;
       this.silence = 0;
       this.speechEndedAt = receivedAt;
@@ -42,11 +64,19 @@ export class LiveSegmenter {
       return;
     }
     if (!this.heardSpeech) return;
-    if (
-      (this.silence >= 0.6 * rate && this.length >= rate) ||
-      this.length >= 8 * rate
-    ) {
-      this.finish();
+    // Near the duration limit, use a brief gap between words when possible.
+    // Short phrases are processed once; the next phrase starts with fresh audio.
+    const nearLimit = this.length >= (this.targetSeconds - 0.75) * rate;
+    const pause =
+      this.length >= rate &&
+      (this.silence >= this.pauseSeconds * rate ||
+        (nearLimit && this.silence >= 0.096 * rate));
+    // If inference is occupied, accumulate a longer continuous phrase instead
+    // of queuing many tiny calls. Real pauses and Stop always retain their audio.
+    const targetReached =
+      this.length >= this.targetSeconds * rate && this.canFinalize();
+    if (pause || targetReached || this.length >= this.maxSeconds * rate) {
+      this.finish(pause ? "pause" : "duration");
       return;
     }
     if (
@@ -66,7 +96,7 @@ export class LiveSegmenter {
       this.lastPreview = this.length;
     }
   }
-  finish() {
+  finish(boundary = "stop") {
     if (this.heardSpeech && this.length >= 320) {
       this.onSnapshot({
         segment: this.id,
@@ -75,6 +105,7 @@ export class LiveSegmenter {
         rate: this.rate,
         audioStartedAt: this.audioStartedAt,
         speechEndedAt: this.speechEndedAt,
+        boundary,
       });
       this.id++;
     }

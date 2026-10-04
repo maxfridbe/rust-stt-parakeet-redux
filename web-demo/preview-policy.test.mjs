@@ -75,3 +75,14 @@ test("busy inference skips previews but never drops final audio", () => {
   assert.equal(jobs[0].final, true);
   assert.equal(jobs[0].samples.length, 42000);
 });
+
+test("short phrases avoid extra previews even on a fast processor", () => {
+  const policy = new PreviewPolicy({ shortPhrases: true });
+  policy.observe(0.1, 3);
+  assert.equal(policy.allows(2, 2, true), false);
+  policy.mode = "frequent";
+  assert.equal(policy.allows(2, 2, true), true);
+  policy.mode = "auto";
+  policy.observe(4, 3);
+  assert.match(policy.description, /slower than live speech/);
+});

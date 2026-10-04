@@ -637,7 +637,8 @@ input:focus-visible {
   background: white;
   color: #405039;
 }
-.live-options label[for="preview-mode"] {
+.live-options label[for] {
+  display: block;
   margin-top: 12px;
 }
 .latency {

@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-04",
+  "method": "One fresh Firefox process per scheduler, no inference warm-up. Feed the JFK fixture as 512-sample packets with a 32 ms browser timer, using the real WASM worker. Desktop CPU; simulated capture, not Android or physical microphone latency. Compare first nonempty transcript only; Stop occurred at different times after the fixture ended.",
+  "environment": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:155.0) Gecko/20100101 Firefox/155.0",
+    "hardwareConcurrency": 16,
+    "deviceMemoryGiB": null,
+    "crossOriginIsolated": false,
+    "coarsePointer": true
+  },
+  "baseline": {
+    "scheduler": "LiveSegmenter from commit 2f45868; original fixed RMS threshold and eight-second cap; no previews",
+    "first_result": {
+      "elapsedMs": 12908,
+      "event": "result",
+      "id": 0,
+      "final": true,
+      "audioSeconds": 8,
+      "queueDepth": 0,
+      "memoryBytes": 413794304,
+      "firstTextMs": 12104,
+      "collectionMs": 8311,
+      "speechWaitMs": 0,
+      "queueMs": 0,
+      "preparationMs": 0,
+      "dispatchMs": 0,
+      "inferenceMs": 3825,
+      "deliveryMs": 0,
+      "submittedToResultMs": 3825,
+      "speechToResultMs": 3825,
+      "inputBytes": 512000,
+      "allocationMs": 0,
+      "copyMs": 0,
+      "modelMs": 3825,
+      "parseMs": 0
+    }
+  },
+  "revised": {
+    "scheduler": "short-phrases-v1; three-second target, adaptive RMS threshold, no previews",
+    "first_result": {
+      "elapsedMs": 4505,
+      "event": "result",
+      "id": 0,
+      "final": true,
+      "audioSeconds": 2.272,
+      "queueDepth": 0,
+      "memoryBytes": 413794304,
+      "firstTextMs": 3720,
+      "collectionMs": 2321,
+      "speechWaitMs": 165,
+      "queueMs": 0,
+      "preparationMs": 0,
+      "dispatchMs": 0,
+      "inferenceMs": 1431,
+      "deliveryMs": 0,
+      "submittedToResultMs": 1431,
+      "speechToResultMs": 1596,
+      "inputBytes": 145408,
+      "allocationMs": 0,
+      "copyMs": 0,
+      "modelMs": 1431,
+      "parseMs": 0
+    }
+  }
+}

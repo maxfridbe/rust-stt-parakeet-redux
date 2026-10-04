@@ -80,6 +80,11 @@
                 ><input id="echo-mode" type="checkbox" checked /> Echo completed
                 words</label
               >
+              <label for="phrase-length">Phrase length</label>
+              <select id="phrase-length">
+                <option value="short">Short · earlier text (~3s)</option>
+                <option value="long">Long · more context (8s maximum)</option>
+              </select>
               <label for="preview-mode">Live updates</label>
               <select id="preview-mode">
                 <option value="auto">Automatic · adapts to speed</option>
@@ -87,8 +92,9 @@
                 <option value="frequent">Frequent previews</option>
               </select>
               <p id="preview-status"></p>
+              <p>Short phrases can lose context. Choose Long for fewer cuts.</p>
               <p id="live-status">
-                Words are echoed after a stable preview or a pause.
+                Words are echoed after a phrase finishes or a stable preview.
               </p>
               <p id="queue-status">No inference running</p>
               <p id="echo-status"></p>
@@ -163,6 +169,10 @@
             Run a sample or speak to measure the delay.
           </p>
           <dl class="latency-grid">
+            <div>
+              <dt>First text after recording began</dt>
+              <dd id="first-text">—</dd>
+            </div>
             <div>
               <dt>Collecting utterance</dt>
               <dd id="latency-collection">—</dd>

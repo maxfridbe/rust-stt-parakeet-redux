@@ -128,26 +128,50 @@ blocks and can require substantially more memory than this short-clip benchmark.
 
 ## Live microphone and voice echo
 
-The microphone lab stays open while inference runs in a Worker. It finalizes an
-utterance after 600 ms of silence and caps a continuous utterance at 8 seconds.
-An energy threshold chooses interactive utterance boundaries; this is separate from the model's native
-long-recording VAD path.
+The microphone lab stays open while inference runs in a Worker. The default
+**Short** setting targets three seconds per phrase and finalizes after 350 ms of
+quiet. Near the target (within 750 ms), a 96 ms quiet gap can end the phrase before
+it cuts through the next word. **Long** retains an eight-second target and 600 ms
+pause threshold. Both have an eight-second hard cap, plus at most one microphone
+packet (normally 32 ms). Stop flushes the remaining speech once.
+
+If the worker is busy at the short target, continuous speech accumulates until it
+can start processing, or reaches the hard cap. This reduces small queued calls
+without dropping speech. Natural pauses still submit final phrases while busy.
+The energy threshold follows recent speech volume, bounded between RMS 0.008 and
+0.02, so modest background hiss need not hide a pause. This is a heuristic, not
+the checkpoint's VAD or a guarantee of correct word boundaries.
 
 Only one inference runs at a time. Previews are skipped while any inference or
 final job is pending, before copying the growing audio buffer. Final utterances
 are preserved. Three update settings control the additional preview work:
 
-- **Automatic** starts with pause-based updates on coarse-pointer/touch devices.
-  Measurements at or below RTF 0.3 enable previews; RTF 0.5 or higher disables
-  them. The gap between these thresholds prevents rapid switching. When enabled,
-  previews wait at least 1.5 seconds and three times the estimated inference cost
-  (the greater of the previous inference time and current duration × latest RTF).
-- **On pauses** runs only final utterances, including the 8-second cap and Stop.
+- **Automatic** with Short processes each phrase once, without growing previews.
+  With Long, touch devices start without previews. Measurements at or below RTF
+  0.3 enable previews; RTF 0.5 or higher disables them. Enabled previews wait at
+  least 1.5 seconds and three times the estimated inference cost (the greater of
+  the previous inference time and current duration × latest RTF).
+- **On pauses** runs only final phrases, including the chosen duration target,
+  hard cap and Stop.
 - **Frequent previews** requests a preview every 1.5 seconds when inference is
   idle. It trades more repeated work for earlier hypotheses.
 
-For an 8-second continuous utterance, frequent previews can submit 1.5, 3, 4.5,
-6, 7.5, and 8 seconds of audio: **30.5 seconds across six calls**. Pause mode sends
+Short phrases prioritize first-text latency over context. Hard cuts can split
+words, change punctuation, or reduce accuracy. Long phrases remain selectable.
+A desktop Firefox 155 check fed the JFK fixture into the real worker as 32 ms
+packets. Time to first text was **12.10 seconds with the previous scheduler** and
+**3.72 seconds with Short**. The previous fixed energy threshold missed the
+fixture's noisy pauses and waited for eight seconds; the new detector submitted
+2.272 seconds of audio at the first phrase boundary. These are single end-to-end
+checks with fresh model loads, not benchmark medians or Android predictions.
+The new run retained all spoken words, with changed punctuation. Raw first-result
+measurements and test conditions are in
+[benchmarks/live-latency/firefox-first-text.json](benchmarks/live-latency/firefox-first-text.json).
+Chromium's AudioWorklet microphone test produced first text in 3.74 seconds on the
+same desktop. Neither test establishes general recognition accuracy.
+
+With Long selected, an 8-second continuous utterance with frequent previews can
+submit 1.5, 3, 4.5, 6, 7.5, and 8 seconds of audio: **30.5 seconds across six calls**. Pause mode sends
 **8 seconds in one call**, about **74% less submitted audio** in this scheduling
 example. This is a deterministic scheduler test, not a measured 74% wall-time
 speedup; startup and decoding costs do not scale uniformly with duration. The
@@ -159,17 +183,18 @@ previews and is followed by another
 word with sufficient audio context, or once an utterance is finalized. Already
 spoken words cannot be retracted if a later hypothesis changes.
 
-This is repeated offline inference over growing utterances, not a streaming
-encoder with cached states. Faster-than-real-time processing of an 11-second clip
-does **not** guarantee instant word feedback: short snapshots repeat model work,
+This is offline inference over separate phrases (or growing utterances when
+previews are enabled), not a streaming encoder with cached states. Processing an
+11-second clip faster than its duration does **not** guarantee instant word feedback: short snapshots repeat model work,
 confirmation waits for context, and browser voice startup adds latency. The demo
-reports result age, inference speed, queue length, and the delay from word
-confirmation to the speech API's `onstart` event. Speech synthesis is supplied by
+reports time to first text, result age, inference speed, queue length, and the
+delay from word confirmation to the speech API's `onstart` event. Speech synthesis is supplied by
 the browser/OS and is not counted as Rust inference time. Use headphones to avoid
 feeding the synthesized voice back into the microphone.
 
-For Firefox on Android, use Automatic or On pauses and check the sample's speed
-metric. Below 1×, even final-only inference cannot keep up with continuous input.
+For Firefox on Android, use Short with Automatic or On pauses and check the speed
+metric for actual microphone phrases, since shorter calls have different overhead.
+Below 1×, even final-only inference cannot keep up with continuous input.
 Pauses provide time to catch up. These scheduling changes do not accelerate an
 individual model pass or reduce its weight memory, and no Android device speed
 has been measured here.
@@ -187,10 +212,19 @@ seconds after speaking starts, even with an empty queue. Subsequent utterances
 can wait behind that job. A shorter utterance may have a different throughput
 because per-call costs matter. These are calculations, not measured phone timings.
 
+For the reported nine seconds of inference on eight seconds of speech, the old
+eight-second collection window implies approximately 17 seconds to first text.
+The Short setting submits earlier and overlaps inference with subsequent capture;
+it does not make an individual model call faster. At the same *assumed* RTF of
+9/8, a three-second phrase would appear after roughly 6.4 seconds. That is an
+illustration, not a prediction: call overhead, thermal throttling, boundaries and
+queuing all matter. Sustained processing below 1× still falls behind speech.
+
 The demo now reports each stage separately:
 
 | Stage | Measurement |
 | --- | --- |
+| First text after recording began | First microphone packet arrival until the first nonempty transcript reaches the UI; includes collection and processing, excludes device capture latency and speech playback |
 | Collecting utterance | Estimated first audio arrival through preview/final submission; includes waiting for a pause |
 | Waiting in queue | Submission until the job is selected for processing |
 | Preparing audio | Resampling to 16 kHz if needed, up to worker dispatch |
