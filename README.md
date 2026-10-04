@@ -14,6 +14,8 @@ The first load downloads roughly 179 MB directly from Hugging Face. Audio stays 
 
 **Speed versus delay:** 0.56× means 10 seconds of audio takes about 17.9 seconds of inference. It excludes collecting the utterance and waiting behind previous work. The **Where the time goes** panel separates collection, queue, audio preparation, worker dispatch, the WASM call, and result delivery. During processing, the microphone panel shows queued audio seconds and whether the worker has received the job. The WASM call includes input copying and result parsing; it is not just the model's arithmetic. Echo startup has its own status.
 
+To investigate a slow device, run the sample or record speech, then click **Copy diagnostics** below the timing panel and paste the log into an issue or conversation. You can copy while processing is still running. The log includes browser details, microphone packet counts, queued audio, input byte counts, and separate WASM allocation, copy, model-call, and result-parsing timings. It retains up to 80 recent events in page memory; nothing is sent automatically, and no audio, transcript text, model URLs, or exception messages are included. If clipboard access fails, a selectable text field appears.
+
 To run the same demo locally:
 
 ```sh
@@ -122,6 +124,18 @@ model.free();
 Browser callers must supply enough memory for the 178 MB checkpoint, float32 non-ternary weights, and intermediate tensors. The tested 11-second clip uses 394.5 MiB of WASM linear memory capacity, plus JavaScript buffers. The current implementation uses compiler-generated SIMD and prioritizes correctness and portability. Specialized ternary kernels, GPU execution, and further memory/performance tuning are future work; Photon benchmark numbers do not apply to this implementation.
 
 After building and downloading the checkpoint, `node scripts/test-wasm.mjs` runs the generated browser bindings under Node's WebAssembly engine and checks the speech fixture's text, tokens, and timestamps.
+
+The demo uses a reusable Rust-owned audio buffer to time input copying separately:
+
+```js
+const wasm = await init();
+// model is an existing WasmModel; samples is external Float32Array PCM.
+const offset = model.prepare_audio(samples.length);
+new Float32Array(wasm.memory.buffer, offset, samples.length).set(samples);
+const result = JSON.parse(model.transcribe_prepared());
+```
+
+Create the memory view after `prepare_audio` and discard it before another WASM call: allocations can grow memory and invalidate views. Fill the entire prepared buffer before transcribing. Its capacity is reused until `model.free()`. The original `transcribe(samples)` API remains available. The WASM regression test checks both paths, shorter subsequent inputs, memory growth, and invalid audio.
 
 ## Structure
 

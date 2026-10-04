@@ -3,8 +3,16 @@ import { LiveSegmenter, stableWordCount } from "./live.js";
 import { SpeechEcho } from "./speech.js";
 import { PreviewPolicy } from "./preview-policy.js";
 import { pipelineTiming, timestamp } from "./timing.js";
+import { DiagnosticLog } from "./diagnostics.js";
 
 const element = (id) => document.getElementById(id);
+const diagnostics = new DiagnosticLog({
+  userAgent: navigator.userAgent,
+  hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+  deviceMemoryGiB: navigator.deviceMemory ?? null,
+  crossOriginIsolated,
+  coarsePointer: matchMedia("(pointer: coarse)").matches,
+});
 const worker = new Worker(new URL("./worker.js", import.meta.url), {
   type: "module",
 });
@@ -30,6 +38,8 @@ const state = {
   takes: 0,
   session: 0,
   workerStartedAt: null,
+  workerStage: null,
+  capture: null,
 };
 let segmenter;
 let stopTimer;
@@ -99,7 +109,7 @@ function updateQueueStatus() {
   const stage =
     state.workerStartedAt == null
       ? "Preparing / sending audio"
-      : "WASM processing";
+      : (state.workerStage ?? "WASM processing");
   element("queue-status").textContent =
     `${stage} · ${age.toFixed(1)}s since submission · ${queued}`;
 }
@@ -123,6 +133,11 @@ worker.onmessage = ({ data }) => {
       `Loading ${(data.bytes / 1e6).toFixed(1)} / ${(data.total / 1e6).toFixed(1)} MB`;
   }
   if (data.type === "ready") {
+    diagnostics.record("model-ready", {
+      downloadMs: data.downloadMs,
+      loadMs: data.loadMs,
+      memoryBytes: data.memoryBytes,
+    });
     state.ready = true;
     element("download-progress").hidden = true;
     element("model-status").textContent =
@@ -138,7 +153,15 @@ worker.onmessage = ({ data }) => {
   if (data.type === "started" && data.id === state.busy?.id) {
     state.workerStartedAt = data.startedAt;
   }
+  if (data.type === "stage" && data.id === state.busy?.id) {
+    state.workerStage = data.stage;
+    diagnostics.record("worker-stage", { id: data.id, stage: data.stage });
+  }
   if (data.type === "error") {
+    diagnostics.record("worker-error", {
+      id: data.id ?? null,
+      stage: state.workerStage,
+    });
     showError(new Error(data.message));
     if (!state.ready) {
       element("load-model").disabled = false;
@@ -150,6 +173,7 @@ worker.onmessage = ({ data }) => {
   updateControls();
 };
 worker.onerror = (event) => {
+  diagnostics.record("worker-crash", { stage: state.workerStage });
   showError(
     new Error(
       `WASM worker failed: ${event.message}. Reload the page to restart.`,
@@ -163,6 +187,7 @@ worker.onerror = (event) => {
 };
 
 function resetSession() {
+  state.capture = null;
   state.session++;
   state.chunks = [];
   state.finalized.clear();
@@ -188,6 +213,14 @@ function enqueue(snapshot) {
     (job) => job.segment !== snapshot.segment || job.final,
   );
   state.pending.push(snapshot);
+  diagnostics.record("submitted", {
+    id: snapshot.id,
+    final: snapshot.final,
+    audioSeconds: snapshot.samples.length / snapshot.rate,
+    captureSampleRate: snapshot.rate,
+    queueDepth: state.pending.length,
+    previewMode: previewPolicy.mode,
+  });
   updateControls();
   processNext();
 }
@@ -197,6 +230,7 @@ async function processNext() {
   const job = state.pending.shift();
   state.busy = job;
   state.workerStartedAt = null;
+  state.workerStage = null;
   job.processingStartedAt = timestamp();
   updateControls();
   try {
@@ -280,6 +314,15 @@ function updateMetrics(data, job, receivedAt) {
   element("token-count").textContent =
     `${data.result.tokens.length} tokens · ${job.final ? "final" : "preview"}`;
   const timing = pipelineTiming(job, data, receivedAt);
+  diagnostics.record("result", {
+    id: job.id,
+    final: job.final,
+    audioSeconds: duration,
+    queueDepth: state.pending.length,
+    memoryBytes: data.memoryBytes,
+    ...timing,
+    ...data.inputTiming,
+  });
   const age = timing.submittedToResultMs / 1000;
   element("live-status").textContent =
     `${job.final ? "Final" : "Preview"} result ${age.toFixed(2)}s after submission${speed < 1 ? " · slower than real time" : ""}`;
@@ -291,8 +334,15 @@ function updateMetrics(data, job, receivedAt) {
     "latency-dispatch": timing.dispatchMs,
     "latency-inference": timing.inferenceMs,
     "latency-delivery": timing.deliveryMs,
+    "latency-allocation": data.inputTiming?.allocationMs,
+    "latency-copy": data.inputTiming?.copyMs,
+    "latency-model": data.inputTiming?.modelMs,
+    "latency-parse": data.inputTiming?.parseMs,
   }))
     element(id).textContent = formatMs(value);
+  element("input-bytes").textContent = data.inputTiming
+    ? `${data.inputTiming.inputBytes.toLocaleString()} bytes of audio copied into WASM`
+    : "Input timing unavailable; reload the page.";
   element("latency-summary").textContent =
     timing.speechToResultMs == null
       ? `${age.toFixed(2)}s from submission to result.`
@@ -328,6 +378,17 @@ async function startRecording() {
   );
   try {
     sampleRate = await microphone.start((samples, rate) => {
+      const receivedAt = performance.now();
+      state.capture ??= {
+        firstPacketAt: receivedAt,
+        lastPacketAt: receivedAt,
+        sampleCount: 0,
+        packetCount: 0,
+        sampleRate: rate,
+      };
+      state.capture.lastPacketAt = receivedAt;
+      state.capture.sampleCount += samples.length;
+      state.capture.packetCount++;
       if (element("live-mode").checked) segmenter.add(samples, rate);
       else state.chunks.push(samples);
     });
@@ -427,6 +488,41 @@ element("copy").onclick = async () => {
     );
   } catch (error) {
     showError(error);
+  }
+};
+
+element("copy-diagnostics").onclick = async () => {
+  diagnostics.record("snapshot", {
+    recording: state.recording,
+    activeJobId: state.busy?.id ?? null,
+    stage: state.workerStage,
+    queuedAudioSeconds: state.pending.reduce(
+      (sum, job) => sum + job.samples.length / job.rate,
+      0,
+    ),
+    capture: state.capture && {
+      sampleCount: state.capture.sampleCount,
+      sampleRate: state.capture.sampleRate,
+      packetCount: state.capture.packetCount,
+      packetArrivalSpanMs:
+        state.capture.lastPacketAt - state.capture.firstPacketAt,
+      sinceLastPacketMs: performance.now() - state.capture.lastPacketAt,
+    },
+  });
+  const log = diagnostics.serialize();
+  try {
+    await navigator.clipboard.writeText(log);
+    element("diagnostics-fallback").hidden = true;
+    element("diagnostics-status").textContent =
+      "Diagnostics copied. Paste them into the conversation.";
+  } catch {
+    const field = element("diagnostics-fallback");
+    field.hidden = false;
+    field.value = log;
+    field.focus();
+    field.select();
+    element("diagnostics-status").textContent =
+      "Select and copy the diagnostic text below.";
   }
 };
 

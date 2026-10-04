@@ -188,12 +188,47 @@
               <dd id="latency-delivery">—</dd>
             </div>
           </dl>
+          <p id="input-bytes">Input-copy timing will appear after a run.</p>
+          <dl class="latency-grid">
+            <div>
+              <dt>WASM input allocation</dt>
+              <dd id="latency-allocation">—</dd>
+            </div>
+            <div>
+              <dt>Copy into WASM</dt>
+              <dd id="latency-copy">—</dd>
+            </div>
+            <div>
+              <dt>Model + result encoding</dt>
+              <dd id="latency-model">—</dd>
+            </div>
+            <div>
+              <dt>Parse result</dt>
+              <dd id="latency-parse">—</dd>
+            </div>
+          </dl>
           <p class="latency-note">
-            The speed multiplier measures the WASM call, including audio copying
-            and result parsing. Other waits are separate. Microphone timing
-            starts when audio arrives in the page; device input latency and
-            speech playback are excluded.
+            The speed multiplier includes allocation, the explicit copy into
+            WASM, model execution, and result parsing. Their breakdown appears
+            above; tiny values may round to zero. Other waits are separate.
+            Microphone timing starts when audio arrives in the page; device
+            input latency and speech playback are excluded.
           </p>
+          <div class="diagnostics-controls">
+            <button id="copy-diagnostics" class="button light">
+              Copy diagnostics
+            </button>
+            <p id="diagnostics-status" role="status">
+              Browser details and timings only. No audio or transcript text.
+              Nothing is sent automatically.
+            </p>
+            <textarea
+              id="diagnostics-fallback"
+              aria-label="Diagnostic log to copy"
+              readonly
+              hidden
+            ></textarea>
+          </div>
         </section>
         <section class="details">
           <div>

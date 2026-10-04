@@ -165,6 +165,36 @@ and 1 ms elsewhere after submission; worker dispatch and result delivery rounded
 to zero. This supports inference as the dominant cost on that desktop run. The
 new panel is needed to check whether the same holds on the user's phone.
 
+### Separating the JS-to-WASM input copy
+
+The demo now explicitly allocates/resizes a Rust-owned audio buffer, copies into
+its WASM memory view once, and calls `transcribe_prepared()` with no array argument.
+This removes the implicit per-call input allocation in the original
+`transcribe(samples)` binding and makes the actual copy independently measurable.
+The old API is retained. Buffer capacity is reused; views are recreated after
+allocation and discarded before inference so WASM memory growth cannot leave a
+stale view in the worker.
+
+The timing panel and **Copy diagnostics** log now split the aggregate WASM work
+into allocation, input copy, model plus result encoding, and JSON parsing. Model
+time includes Rust inference, transcript serialization, and returning its string
+through the binding; it excludes input copying. The headline speed still includes
+all these stages, so it remains comparable to previous readings. Stage messages
+also identify whether a currently running job has reached inference.
+
+One Node 22 desktop regression run on the same CPU measured the 11-second
+fixture's **704,000-byte** input at **0.058 ms allocation**, **0.025 ms copy**,
+**5,512.932 ms model/encoding**, and **0.040 ms parsing**. This is one diagnostic
+run after the original API's fixture check, not a controlled throughput comparison
+or an Android measurement. Both APIs returned identical text, all token IDs, and
+timestamps. The test also checks shorter subsequent inputs and WASM memory growth.
+
+Copy diagnostics retains at most 80 recent events, including capture packet
+counts and arrival span, job stages, queue depth, and per-run timings. It excludes
+audio, transcript text, URLs and exception messages. It is kept in page memory
+and only exported when the user clicks Copy; denied clipboard access exposes a
+manual-copy field. Values near zero can be rounded by browser timer precision.
+
 ## Correctness gates
 
 - All 39 token IDs and start/end timestamps on the speech fixture match the

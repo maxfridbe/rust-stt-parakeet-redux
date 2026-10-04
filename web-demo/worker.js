@@ -1,5 +1,6 @@
-import init, { WasmModel } from "../web/parakeet_redux.js";
+import init, { WasmModel } from "../web/parakeet_redux.js?input-buffer=1";
 import { timestamp } from "./timing.js";
+import { transcribeWithTimings } from "./wasm-inference.js";
 
 let model;
 let wasm;
@@ -37,7 +38,12 @@ self.onmessage = async ({ data }) => {
   try {
     if (data.type === "load") {
       const start = performance.now();
-      wasm = await init();
+      wasm = await init({
+        module_or_path: new URL(
+          "../web/parakeet_redux_bg.wasm?input-buffer=1",
+          import.meta.url,
+        ),
+      });
       downloaded = 0;
       const files = [];
       for (const name of [
@@ -63,12 +69,18 @@ self.onmessage = async ({ data }) => {
       if (!model) throw new Error("Load the model first.");
       const startedAt = timestamp();
       postMessage({ type: "started", id: data.id, startedAt });
-      const result = JSON.parse(model.transcribe(data.samples));
+      const { result, inputTiming } = transcribeWithTimings(
+        model,
+        wasm.memory,
+        data.samples,
+        (stage) => postMessage({ type: "stage", id: data.id, stage }),
+      );
       const finishedAt = timestamp();
       postMessage({
         type: "result",
         id: data.id,
         result,
+        inputTiming,
         startedAt,
         finishedAt,
         inferenceMs: finishedAt - startedAt,
