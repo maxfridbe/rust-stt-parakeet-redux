@@ -70,7 +70,7 @@
               </button>
             </div>
             <p class="capture-note">
-              Record up to 30 seconds. Stop to transcribe.
+              Record up to 30 seconds. Pause to complete an utterance.
             </p>
             <div class="live-options">
               <label
@@ -80,6 +80,13 @@
                 ><input id="echo-mode" type="checkbox" checked /> Echo completed
                 words</label
               >
+              <label for="preview-mode">Live updates</label>
+              <select id="preview-mode">
+                <option value="auto">Automatic · adapts to speed</option>
+                <option value="pauses">On pauses · less processing</option>
+                <option value="frequent">Frequent previews</option>
+              </select>
+              <p id="preview-status"></p>
               <p id="live-status">
                 Words are echoed after a stable preview or a pause.
               </p>

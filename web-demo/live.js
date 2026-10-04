@@ -1,10 +1,11 @@
 import { concatenate } from "./audio.js";
 
-// Each utterance has one final job. Interim snapshots may be replaced while the
-// worker is busy; final audio is never discarded. No unbounded inference queue.
+// Each utterance has one final job. The caller can skip previews before we copy
+// their audio; final audio is always delivered, even when inference is busy.
 export class LiveSegmenter {
-  constructor(onSnapshot) {
+  constructor(onSnapshot, canPreview = (_, elapsed) => elapsed >= 1.5) {
     this.onSnapshot = onSnapshot;
+    this.canPreview = canPreview;
     this.id = 0;
     this.reset();
   }
@@ -41,7 +42,12 @@ export class LiveSegmenter {
       this.finish();
       return;
     }
-    if (this.length - this.lastPreview >= 1.5 * rate) {
+    if (
+      this.canPreview(
+        this.length / rate,
+        (this.length - this.lastPreview) / rate,
+      )
+    ) {
       this.onSnapshot({
         segment: this.id,
         final: false,

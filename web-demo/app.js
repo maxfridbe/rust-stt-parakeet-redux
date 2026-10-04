@@ -1,12 +1,16 @@
 import { Microphone, concatenate, decodeFile, resample } from "./audio.js";
 import { LiveSegmenter, stableWordCount } from "./live.js";
 import { SpeechEcho } from "./speech.js";
+import { PreviewPolicy } from "./preview-policy.js";
 
 const element = (id) => document.getElementById(id);
 const worker = new Worker(new URL("./worker.js", import.meta.url), {
   type: "module",
 });
 const microphone = new Microphone();
+const previewPolicy = new PreviewPolicy({
+  conservative: matchMedia("(pointer: coarse)").matches,
+});
 const echo = new SpeechEcho(element("voice"), (message) => {
   element("live-status").textContent = message;
 });
@@ -29,6 +33,13 @@ let segmenter;
 let stopTimer;
 let startedAt = 0;
 let sampleRate = 16000;
+
+function updatePreviewPolicy() {
+  previewPolicy.mode = element("preview-mode").value;
+  element("preview-status").textContent = previewPolicy.description;
+}
+element("preview-mode").onchange = updatePreviewPolicy;
+updatePreviewPolicy();
 
 if (!["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)) {
   element("model-url").value =
@@ -135,6 +146,8 @@ function resetSession() {
 }
 
 function enqueue(snapshot) {
+  // A preview is useful only if it can start now. Never let one delay finals.
+  if (!snapshot.final && (state.busy || state.pending.length)) return;
   snapshot.session = state.session;
   snapshot.capturedAt = performance.now();
   snapshot.id = state.nextId++;
@@ -221,6 +234,8 @@ function updateMetrics(data, job) {
   const seconds = data.inferenceMs / 1000;
   const duration = data.result.duration_seconds;
   const speed = duration / seconds;
+  previewPolicy.observe(seconds, duration);
+  updatePreviewPolicy();
   element("metric-audio").textContent = duration.toFixed(2);
   element("metric-inference").textContent = seconds.toFixed(2);
   element("metric-speed").textContent = speed.toFixed(2);
@@ -254,7 +269,13 @@ async function startRecording() {
   resetSession();
   state.stopping = true;
   updateControls();
-  segmenter = new LiveSegmenter(enqueue);
+  segmenter = new LiveSegmenter(enqueue, (duration, elapsed) =>
+    previewPolicy.allows(
+      duration,
+      elapsed,
+      !state.busy && !state.pending.length,
+    ),
+  );
   try {
     sampleRate = await microphone.start((samples, rate) => {
       if (element("live-mode").checked) segmenter.add(samples, rate);
@@ -362,10 +383,19 @@ element("copy").onclick = async () => {
 const canvas = element("waveform");
 const drawing = canvas.getContext("2d");
 const waveform = new Float32Array(512);
+let lastDraw = 0;
+let previousDrawing = "";
 function draw() {
+  requestAnimationFrame(draw);
+  const now = performance.now();
+  if (document.hidden || now - lastDraw < 1000 / 30) return;
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   const ratio = devicePixelRatio || 1;
+  const drawingState = `${width}:${height}:${ratio}:${state.recording}`;
+  if (!state.recording && drawingState === previousDrawing) return;
+  previousDrawing = drawingState;
+  lastDraw = now;
   if (
     canvas.width !== Math.round(width * ratio) ||
     canvas.height !== Math.round(height * ratio)
@@ -392,6 +422,5 @@ function draw() {
     element("recording-clock").textContent =
       `00:${seconds.toFixed(1).padStart(4, "0")}`;
   }
-  requestAnimationFrame(draw);
 }
 draw();

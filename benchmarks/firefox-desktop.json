@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-04",
+  "browser": "Playwright Firefox 155.0 (build 1543), headless",
+  "cpu": "AMD Ryzen 7 7700X",
+  "platform": "x86-64 Linux desktop; not Android",
+  "viewport": { "width": 390, "height": 844, "has_touch": true },
+  "audio_seconds": 11,
+  "warmup_seconds": 6.00,
+  "runs_seconds": [5.75, 5.77, 5.77],
+  "median_seconds": 5.77,
+  "realtime_speed": 1.91,
+  "timing_precision_seconds": 0.01,
+  "measurement": "Demo worker inference timer, read from the displayed metric; excludes loading",
+  "reference_text_matched_all_runs": true
+}

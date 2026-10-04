@@ -626,7 +626,8 @@ input:focus-visible {
   text-decoration-style: dotted;
   text-underline-offset: 5px;
 }
-.settings select {
+.settings select,
+.live-options select {
   display: block;
   max-width: 100%;
   padding: 10px;
@@ -635,4 +636,7 @@ input:focus-visible {
   border-radius: 4px;
   background: white;
   color: #405039;
+}
+.live-options label[for="preview-mode"] {
+  margin-top: 12px;
 }

@@ -10,6 +10,8 @@ Load the model, allow microphone access, and speak. Live mode transcribes growin
 
 The first load downloads roughly 179 MB directly from Hugging Face. Audio stays in the browser. Voice synthesis uses the selected browser voice; voices marked “local” run on device, while other voices may use a network service. Live previews can change, and already-spoken text cannot be retracted. Latency is measured rather than guaranteed: this is an offline transducer repeatedly evaluated on utterances, not an incremental streaming encoder.
 
+**On a phone:** leave Live updates on **Automatic**, or select **On pauses** to minimize repeated processing. Automatic starts with pause-based updates on touch devices and adapts to measured inference speed. It keeps listening while transcribing completed utterances and echoing their words. **Frequent previews** provides earlier hypotheses when the processor is free, at a higher processing cost. Try the sample to measure your device: below 1× speed, even pause-based transcription will fall behind continuous speech. This remains a large, single-threaded CPU model; scheduling reduces redundant work without making individual model passes faster.
+
 To run the same demo locally:
 
 ```sh

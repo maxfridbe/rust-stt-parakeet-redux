@@ -11,6 +11,7 @@ Rust implementation, not Photon's published performance numbers.
 | Native Rust, container-built release binary | 5 | **2.468 s** | **4.46× real time** | 0.224 |
 | WebAssembly scalar, Node 22.11.0 | 3 | 17.763 s | 0.62× real time | 1.615 |
 | WebAssembly SIMD, Node 22.11.0 | 3 | **5.788 s** | **1.90× real time** | 0.526 |
+| WebAssembly SIMD, desktop Firefox 155 | 3 | 5.77 s | 1.91× real time | 0.525 |
 
 The shipped browser build enables `simd128`. That reduced median WASM inference
 time by approximately 67% compared with the scalar build (3.07× faster). No
@@ -25,6 +26,11 @@ the WASM benchmark also checks all token IDs.
 
 Native runs: 2.468, 2.478, 2.446, 2.486, 2.455 seconds. WASM SIMD runs: 5.788,
 5.805, 5.771 seconds. Raw results are in [benchmarks/](benchmarks/).
+Firefox timings came from the demo's worker timer, displayed to two decimal
+places: 5.75, 5.77, 5.77 seconds after one 6.00-second warm-up. This was headless
+desktop Firefox on the same Ryzen CPU, with a 390-pixel touch viewport; it checks
+engine compatibility and layout, **not Android hardware performance**. All four
+outputs matched the reference text.
 
 `Audio / wall time = audio seconds / inference seconds`, so higher is faster.
 `RTF = inference seconds / audio seconds`, so lower is faster and values below
@@ -69,15 +75,34 @@ blocks and can require substantially more memory than this short-clip benchmark.
 
 ## Live microphone and voice echo
 
-The microphone lab stays open while inference runs in a Worker. It proposes a
-new preview every 1.5 seconds of speech, finalizes an utterance after 600 ms of
-silence, and caps a continuous utterance at 8 seconds. An energy threshold chooses
-interactive utterance boundaries; this is separate from the model's native
+The microphone lab stays open while inference runs in a Worker. It finalizes an
+utterance after 600 ms of silence and caps a continuous utterance at 8 seconds.
+An energy threshold chooses interactive utterance boundaries; this is separate from the model's native
 long-recording VAD path.
 
-Only one inference runs at a time. New previews replace older queued previews for
-the same utterance; final utterances are preserved. A word is eligible for browser
-speech synthesis once it agrees across two previews and is followed by another
+Only one inference runs at a time. Previews are skipped while any inference or
+final job is pending, before copying the growing audio buffer. Final utterances
+are preserved. Three update settings control the additional preview work:
+
+- **Automatic** starts with pause-based updates on coarse-pointer/touch devices.
+  Measurements at or below RTF 0.3 enable previews; RTF 0.5 or higher disables
+  them. The gap between these thresholds prevents rapid switching. When enabled,
+  previews wait at least 1.5 seconds and three times the estimated inference cost
+  (the greater of the previous inference time and current duration × latest RTF).
+- **On pauses** runs only final utterances, including the 8-second cap and Stop.
+- **Frequent previews** requests a preview every 1.5 seconds when inference is
+  idle. It trades more repeated work for earlier hypotheses.
+
+For an 8-second continuous utterance, frequent previews can submit 1.5, 3, 4.5,
+6, 7.5, and 8 seconds of audio: **30.5 seconds across six calls**. Pause mode sends
+**8 seconds in one call**, about **74% less submitted audio** in this scheduling
+example. This is a deterministic scheduler test, not a measured 74% wall-time
+speedup; startup and decoding costs do not scale uniformly with duration. The
+waveform also redraws at most 30 times per second while recording and skips
+unchanged idle frames and hidden tabs.
+
+A word is eligible for browser speech synthesis once it agrees across two
+previews and is followed by another
 word with sufficient audio context, or once an utterance is finalized. Already
 spoken words cannot be retracted if a later hypothesis changes.
 
@@ -89,6 +114,12 @@ reports result age, inference speed, queue length, and the delay from word
 confirmation to the speech API's `onstart` event. Speech synthesis is supplied by
 the browser/OS and is not counted as Rust inference time. Use headphones to avoid
 feeding the synthesized voice back into the microphone.
+
+For Firefox on Android, use Automatic or On pauses and check the sample's speed
+metric. Below 1×, even final-only inference cannot keep up with continuous input.
+Pauses provide time to catch up. These scheduling changes do not accelerate an
+individual model pass or reduce its weight memory, and no Android device speed
+has been measured here.
 
 Chromium 153 was exercised with the sample, a simulated microphone, desktop and
 390-pixel mobile layouts, and instrumented browser speech API calls. Headless
