@@ -1,0 +1,12 @@
+{
+  "runtime": "Firefox 155 desktop, Ryzen 7 7700X",
+  "variant": "dist/web",
+  "warmup_seconds": 5.98,
+  "runs_seconds": [
+    5.735,
+    5.738,
+    5.748
+  ],
+  "median_seconds": 5.738,
+  "audio_seconds": 11
+}

@@ -1,0 +1,17 @@
+{
+  "audio_seconds": 11.0,
+  "load_seconds": 0.258479492,
+  "median_seconds": 2.448341787,
+  "realtime_speed": 4.492836767483559,
+  "rtf": 0.22257652609090908,
+  "runs_seconds": [
+    2.448341787,
+    2.445746364,
+    2.441621221,
+    2.456547838,
+    2.4734952740000002
+  ],
+  "text": "And so, my fellow Americans, ask not what what your country can do for you, ask what you can do for your country.",
+  "tokens": 39,
+  "warmup_runs": 1
+}

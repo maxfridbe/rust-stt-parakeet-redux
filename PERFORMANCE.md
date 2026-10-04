@@ -4,7 +4,60 @@ Measured on 2026-10-04 with the pinned Parakeet Redux checkpoint, using the
 committed 11-second, 16 kHz JFK speech fixture. These are measurements of this
 Rust implementation, not Photon's published performance numbers.
 
-## CPU processing speed
+## Optimized kernels
+
+The `grouped-ternary-channels-last-v1` kernel revision reduces repeated packed
+weight decoding and reorganizes spatial convolutions for contiguous channel
+updates. The pointwise convolutions now reshape views rather than rebuilding
+input, weight, and output arrays on every call. The implementation remains safe
+Rust and uses the same standard WASM SIMD build flags and one inference worker.
+
+Same-session comparison against commit `3b6bfe9`, on the machine described below,
+using the same 11-second speech fixture and one warm-up, with three timed WASM
+runs and five timed native runs:
+
+| Runtime | Before median | Optimized median | Less processing time | Optimized audio / wall time |
+| --- | ---: | ---: | ---: | ---: |
+| Node 22.11.0 WASM | 5.731 s | **4.810 s** | **16.1%** | **2.29×** |
+| Firefox 155 desktop WASM | 5.738 s | **5.065 s** | **11.7%** | **2.17×** |
+| Native Rust | 2.448 s | **1.921 s** | **21.5%** | **5.73×** |
+
+Grouped weight decoding alone measured 5.058 seconds in Node; the convolution
+changes brought the combined median to 4.810 seconds. Optimized Node runs were
+4.810, 4.800, and 4.825 seconds. Firefox runs were 5.066, 5.065, and 5.063 seconds.
+Raw measurements are in [benchmarks/kernel-optimization/](benchmarks/kernel-optimization/).
+The Firefox worker benchmark includes the reusable input copy and JSON parsing;
+the Node benchmark uses the original `transcribe(samples)` binding. Each comparison
+uses the same API before and after. Browser timings have millisecond precision.
+To reproduce the browser measurement, run Try a sample four times, discard the
+first run, and take the median of the next three `inferenceMs` values in Copy
+diagnostics. Native runs use the existing `parakeet-benchmark` command below.
+
+The optimized Node run used 394.625 MiB of WASM linear memory capacity. Native
+real-weight checks still pass the independent subsampler, encoder and VAD
+fixtures; all 39 speech tokens and timestamps also match in Firefox. These are
+desktop measurements, not a prediction of Android speed. Use Copy diagnostics
+on the phone to compare: its `model-ready` event records the kernel revision.
+
+### Parallel execution
+
+Microphone capture, UI work, and model inference already run concurrently.
+SIMD performs several arithmetic operations per instruction inside the inference
+worker. Multiple CPU cores do not yet share the model's matrix calculations.
+
+Matrix tiles, attention heads and some projections can be parallelized within a
+layer, but successive Conformer blocks depend on preceding outputs. A browser
+thread pool needs shared WASM memory, a threading-enabled Rust build and
+[cross-origin isolation](https://developer.mozilla.org/en-US/docs/Web/API/Window/crossOriginIsolated).
+The [wasm-bindgen-rayon setup](https://github.com/RReverser/wasm-bindgen-rayon)
+documents the additional toolchain and worker-pool requirements. The hosted demo
+currently reports `crossOriginIsolated: false`; this update does not enable
+multicore inference. Loading a separate full model per worker would multiply
+memory use, so it is not an appropriate default for this phone demo. A future
+shared-memory implementation should benchmark small thread counts and retain
+the single-worker fallback.
+
+## Initial CPU processing speeds
 
 | Runtime | Timed runs | Median inference | Audio / wall time | RTF |
 | --- | ---: | ---: | ---: | ---: |

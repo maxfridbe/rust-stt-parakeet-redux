@@ -27,6 +27,14 @@ node scripts/serve-demo.mjs
 
 See [PERFORMANCE.md](PERFORMANCE.md) for measured CPU/WASM speeds and reproduction commands.
 
+The optimized kernels decode packed weights five at a time and store spatial
+convolution weights with adjacent output channels, improving SIMD access and
+avoiding temporary matrices in 1×1 convolutions. Inference still uses one CPU
+worker. Sharing model computation across cores would require a threaded WASM
+build and cross-origin isolation; the current demo does not initialize a thread
+pool. The diagnostic log identifies this kernel revision in its `model-ready`
+event so device comparisons can distinguish it from earlier builds.
+
 The implementation covers log-mel features, convolutional subsampling, all 24 Conformer blocks, packed ternary projections, the two-layer LSTM predictor, greedy token-duration decoding, tokenizer decoding, token/word/sentence timestamps, and the checkpoint's VAD head for long recordings. Model weights stay packed between projection calls; each projection is temporarily expanded to float32 for portable matrix multiplication.
 
 ## Run

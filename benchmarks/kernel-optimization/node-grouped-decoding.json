@@ -1,0 +1,15 @@
+{
+  "audio_seconds": 11,
+  "load_seconds": 0.398392236,
+  "warmup_runs": 1,
+  "runs_seconds": [
+    5.05062867,
+    5.057612905,
+    5.058408368
+  ],
+  "median_seconds": 5.057612905,
+  "realtime_speed": 2.1749390881863073,
+  "rtf": 0.4597829913636364,
+  "wasm_capacity_mib": 394.5,
+  "node": "v22.11.0"
+}

@@ -1,0 +1,12 @@
+{
+  "runtime": "Firefox 155 desktop, Ryzen 7 7700X",
+  "variant": "target/optimized-convolution-web",
+  "warmup_seconds": 5.155,
+  "runs_seconds": [
+    5.066,
+    5.065,
+    5.063
+  ],
+  "median_seconds": 5.065,
+  "audio_seconds": 11
+}

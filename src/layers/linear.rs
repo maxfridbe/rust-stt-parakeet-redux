@@ -76,18 +76,10 @@ impl PackedLinear {
         let mut expanded = Matrix::zeros((self.output, self.input));
         for (row_index, mut row) in expanded.outer_iter_mut().enumerate() {
             let packed_row = &self.packed[row_index * self.input.div_ceil(5)..];
-            // A freshly allocated matrix is contiguous. Grouping before decoding
-            // removes a variable integer division from every weight, especially
-            // valuable on WASM, while preserving groups that cross packed bytes.
             let values = row.as_slice_mut().expect("new matrix rows are contiguous");
             for (group, values) in values.chunks_mut(self.group_size).enumerate() {
                 let scale = self.scales[(row_index, group)];
-                let start = group * self.group_size;
-                for (offset, value) in values.iter_mut().enumerate() {
-                    let column = start + offset;
-                    *value =
-                        TERNARY_DIGITS[usize::from(packed_row[column / 5])][column % 5] * scale;
-                }
+                expand_group(packed_row, group * self.group_size, scale, values);
             }
         }
         expanded
@@ -95,6 +87,37 @@ impl PackedLinear {
 
     pub fn forward(&self, input: &Matrix) -> Matrix {
         input.dot(&self.expand().t())
+    }
+}
+
+fn expand_group(packed: &[u8], start: usize, scale: f32, output: &mut [f32]) {
+    // Scale groups need not align with five-digit packed bytes. Decode the
+    // partial first byte, then whole bytes, then the partial tail. The hot loop
+    // performs one lookup per five weights without per-weight division/modulo.
+    let packed = &packed[start / 5..];
+    let first_digit = start % 5;
+    let prefix_length = (5 - first_digit).min(output.len());
+    let (prefix, rest) = output.split_at_mut(prefix_length);
+    let first = &TERNARY_DIGITS[usize::from(packed[0])][first_digit..];
+    for (value, digit) in prefix.iter_mut().zip(first) {
+        *value = digit * scale;
+    }
+    let tail_byte = 1 + rest.len() / 5;
+    let mut groups = rest.chunks_exact_mut(5);
+    for (values, &byte) in groups.by_ref().zip(&packed[1..]) {
+        for (value, digit) in values.iter_mut().zip(TERNARY_DIGITS[usize::from(byte)]) {
+            *value = digit * scale;
+        }
+    }
+    let tail = groups.into_remainder();
+    if tail.is_empty() {
+        return;
+    }
+    for (value, digit) in tail
+        .iter_mut()
+        .zip(TERNARY_DIGITS[usize::from(packed[tail_byte])])
+    {
+        *value = digit * scale;
     }
 }
 
@@ -137,5 +160,32 @@ mod tests {
             layer.forward(&array![[1., 2., 3., 4., 5., 6.]]),
             array![[25., 85.]]
         );
+    }
+
+    #[test]
+    fn grouped_expansion_matches_individual_base_three_digits() {
+        for input in [1_usize, 4, 5, 6, 127, 128, 129, 1024] {
+            for group_size in [1, 2, 5, 7, 128] {
+                let packed: Vec<_> = (0..2 * input.div_ceil(5))
+                    .map(|index| ((index * 37 + 19) % 243) as u8)
+                    .collect();
+                let scales = Matrix::from_shape_fn((2, input.div_ceil(group_size)), |(r, g)| {
+                    (r + g + 1) as f32 * 0.25
+                });
+                let expected = Matrix::from_shape_fn((2, input), |(row, column)| {
+                    let byte = packed[row * input.div_ceil(5) + column / 5];
+                    let digit = (u32::from(byte) / 3_u32.pow((column % 5) as u32)) % 3;
+                    (digit as f32 - 1.0) * scales[(row, column / group_size)]
+                });
+                let layer = PackedLinear {
+                    packed,
+                    scales,
+                    input,
+                    output: 2,
+                    group_size,
+                };
+                assert_eq!(layer.expand(), expected);
+            }
+        }
     }
 }

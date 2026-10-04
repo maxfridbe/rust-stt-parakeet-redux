@@ -134,6 +134,7 @@ worker.onmessage = ({ data }) => {
   }
   if (data.type === "ready") {
     diagnostics.record("model-ready", {
+      kernelVersion: data.kernelVersion ?? "original",
       downloadMs: data.downloadMs,
       loadMs: data.loadMs,
       memoryBytes: data.memoryBytes,

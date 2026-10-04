@@ -1,4 +1,4 @@
-import init, { WasmModel } from "../web/parakeet_redux.js?input-buffer=1";
+import init, { WasmModel } from "../web/parakeet_redux.js?kernels=2";
 import { timestamp } from "./timing.js";
 import { transcribeWithTimings } from "./wasm-inference.js";
 
@@ -40,7 +40,7 @@ self.onmessage = async ({ data }) => {
       const start = performance.now();
       wasm = await init({
         module_or_path: new URL(
-          "../web/parakeet_redux_bg.wasm?input-buffer=1",
+          "../web/parakeet_redux_bg.wasm?kernels=2",
           import.meta.url,
         ),
       });
@@ -59,6 +59,7 @@ self.onmessage = async ({ data }) => {
       model = new WasmModel(...files);
       postMessage({
         type: "ready",
+        kernelVersion: "grouped-ternary-channels-last-v1",
         downloadMs: downloadedAt - start,
         loadMs: performance.now() - downloadedAt,
         memoryBytes: wasm.memory.buffer.byteLength,
