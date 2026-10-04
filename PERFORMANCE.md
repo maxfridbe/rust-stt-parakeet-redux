@@ -126,6 +126,45 @@ Chromium 153 was exercised with the sample, a simulated microphone, desktop and
 testing confirms the speech API is invoked; audible playback and installed
 voices depend on the user's browser and operating system.
 
+## Throughput versus perceived delay
+
+At 0.56× speed, an 8-second utterance needs approximately 14.3 seconds to process.
+If submission waits for the 8-second cap, its first words appear about 22.3
+seconds after speaking starts, even with an empty queue. Subsequent utterances
+can wait behind that job. A shorter utterance may have a different throughput
+because per-call costs matter. These are calculations, not measured phone timings.
+
+The demo now reports each stage separately:
+
+| Stage | Measurement |
+| --- | --- |
+| Collecting utterance | Estimated first audio arrival through preview/final submission; includes waiting for a pause |
+| Waiting in queue | Submission until the job is selected for processing |
+| Preparing audio | Resampling to 16 kHz if needed, up to worker dispatch |
+| Sending to worker | Dispatch until the worker starts handling the job |
+| WASM call | Input copying, Rust inference, transcript serialization, and JS parsing |
+| Delivering result | Worker completion until the main thread receives the result |
+
+The headline speed still measures the WASM call. Sample fetching, file decoding,
+hardware microphone latency, rendering, and synthesized speech playback are not
+part of that metric. Microphone speech-to-result timing uses the arrival of the
+last packet above the energy threshold, so it is approximate, not acoustic
+latency. Window and Worker timestamps share `performance.timeOrigin +
+performance.now()`; small values can round to zero with browser timer precision.
+The live status shows queued audio seconds and elapsed time while processing,
+and speech echo no longer overwrites transcription delay.
+
+The microphone now transfers 512-sample packets (32 ms at 16 kHz), down from
+2,048 samples (128 ms). Full packets transfer their existing buffer rather than
+copying it first. Final partial packets are retained. This reduces packet fill
+latency by up to 96 ms; it does not turn the offline model into a streaming
+encoder or remove seconds of inference/queue delay.
+
+An instrumented desktop Firefox sample run measured 5,989 ms in the WASM call
+and 1 ms elsewhere after submission; worker dispatch and result delivery rounded
+to zero. This supports inference as the dominant cost on that desktop run. The
+new panel is needed to check whether the same holds on the user's phone.
+
 ## Correctness gates
 
 - All 39 token IDs and start/end timestamps on the speech fixture match the

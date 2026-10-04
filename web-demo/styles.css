@@ -640,3 +640,35 @@ input:focus-visible {
 .live-options label[for="preview-mode"] {
   margin-top: 12px;
 }
+.latency {
+  margin-top: 22px;
+}
+.latency > p {
+  margin: 0 23px 18px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.latency-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin: 0 23px 20px;
+}
+.latency-grid dt {
+  font-size: 11px;
+  color: #64725b;
+}
+.latency-grid dd {
+  margin: 6px 0 0;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.latency .latency-note {
+  font-size: 10px;
+  color: #64725b;
+}
+@media (max-width: 600px) {
+  .latency-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

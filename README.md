@@ -12,6 +12,8 @@ The first load downloads roughly 179 MB directly from Hugging Face. Audio stays 
 
 **On a phone:** leave Live updates on **Automatic**, or select **On pauses** to minimize repeated processing. Automatic starts with pause-based updates on touch devices and adapts to measured inference speed. It keeps listening while transcribing completed utterances and echoing their words. **Frequent previews** provides earlier hypotheses when the processor is free, at a higher processing cost. Try the sample to measure your device: below 1× speed, even pause-based transcription will fall behind continuous speech. This remains a large, single-threaded CPU model; scheduling reduces redundant work without making individual model passes faster.
 
+**Speed versus delay:** 0.56× means 10 seconds of audio takes about 17.9 seconds of inference. It excludes collecting the utterance and waiting behind previous work. The **Where the time goes** panel separates collection, queue, audio preparation, worker dispatch, the WASM call, and result delivery. During processing, the microphone panel shows queued audio seconds and whether the worker has received the job. The WASM call includes input copying and result parsing; it is not just the model's arithmetic. Echo startup has its own status.
+
 To run the same demo locally:
 
 ```sh

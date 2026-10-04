@@ -1,7 +1,7 @@
 class Recorder extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.buffer = new Float32Array(2048);
+    this.buffer = new Float32Array(512);
     this.offset = 0;
     this.port.onmessage = ({ data }) => {
       if (data === "flush") {
@@ -12,8 +12,12 @@ class Recorder extends AudioWorkletProcessor {
   }
   flush() {
     if (!this.offset) return;
-    const samples = this.buffer.slice(0, this.offset);
+    const samples =
+      this.offset === this.buffer.length
+        ? this.buffer
+        : this.buffer.slice(0, this.offset);
     this.port.postMessage({ type: "audio", samples }, [samples.buffer]);
+    this.buffer = new Float32Array(512);
     this.offset = 0;
   }
   process(inputs) {

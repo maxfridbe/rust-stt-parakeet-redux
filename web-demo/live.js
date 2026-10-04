@@ -1,4 +1,5 @@
 import { concatenate } from "./audio.js";
+import { timestamp } from "./timing.js";
 
 // Each utterance has one final job. The caller can skip previews before we copy
 // their audio; final audio is always delivered, even when inference is busy.
@@ -15,9 +16,13 @@ export class LiveSegmenter {
     this.silence = 0;
     this.heardSpeech = false;
     this.lastPreview = 0;
+    this.audioStartedAt = null;
+    this.speechEndedAt = null;
   }
-  add(samples, rate) {
+  add(samples, rate, receivedAt = timestamp()) {
     this.rate = rate;
+    if (!this.length)
+      this.audioStartedAt = receivedAt - (samples.length / rate) * 1000;
     this.chunks.push(samples);
     this.length += samples.length;
     const rms = Math.sqrt(
@@ -27,11 +32,13 @@ export class LiveSegmenter {
     if (rms >= 0.008) {
       this.heardSpeech = true;
       this.silence = 0;
+      this.speechEndedAt = receivedAt;
     } else this.silence += samples.length;
     if (!this.heardSpeech && this.length > rate) {
       this.chunks = [samples];
       this.length = samples.length;
       this.lastPreview = 0;
+      this.audioStartedAt = receivedAt - (samples.length / rate) * 1000;
       return;
     }
     if (!this.heardSpeech) return;
@@ -53,6 +60,8 @@ export class LiveSegmenter {
         final: false,
         samples: concatenate(this.chunks),
         rate,
+        audioStartedAt: this.audioStartedAt,
+        speechEndedAt: this.speechEndedAt,
       });
       this.lastPreview = this.length;
     }
@@ -64,6 +73,8 @@ export class LiveSegmenter {
         final: true,
         samples: concatenate(this.chunks),
         rate: this.rate,
+        audioStartedAt: this.audioStartedAt,
+        speechEndedAt: this.speechEndedAt,
       });
       this.id++;
     }

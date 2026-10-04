@@ -1,4 +1,5 @@
 import init, { WasmModel } from "../web/parakeet_redux.js";
+import { timestamp } from "./timing.js";
 
 let model;
 let wasm;
@@ -60,13 +61,17 @@ self.onmessage = async ({ data }) => {
     }
     if (data.type === "transcribe") {
       if (!model) throw new Error("Load the model first.");
-      const start = performance.now();
+      const startedAt = timestamp();
+      postMessage({ type: "started", id: data.id, startedAt });
       const result = JSON.parse(model.transcribe(data.samples));
+      const finishedAt = timestamp();
       postMessage({
         type: "result",
         id: data.id,
         result,
-        inferenceMs: performance.now() - start,
+        startedAt,
+        finishedAt,
+        inferenceMs: finishedAt - startedAt,
         memoryBytes: wasm.memory.buffer.byteLength,
       });
     }

@@ -34,3 +34,15 @@ test("silence finalizes speech and previews retain utterance identity", () => {
   segmenter.finish();
   assert.equal(jobs.length, 2);
 });
+
+test("snapshots retain speech time so pause and queue delays are visible", () => {
+  const jobs = [];
+  const segmenter = new LiveSegmenter(
+    (job) => jobs.push(job),
+    () => false,
+  );
+  segmenter.add(new Float32Array(32000).fill(0.1), 16000, 5000);
+  segmenter.add(new Float32Array(10000), 16000, 5625);
+  assert.equal(jobs[0].audioStartedAt, 3000);
+  assert.equal(jobs[0].speechEndedAt, 5000);
+});

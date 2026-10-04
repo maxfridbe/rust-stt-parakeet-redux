@@ -90,6 +90,8 @@
               <p id="live-status">
                 Words are echoed after a stable preview or a pause.
               </p>
+              <p id="queue-status">No inference running</p>
+              <p id="echo-status"></p>
               <p>
                 Use headphones to keep synthesized speech out of the microphone.
               </p>
@@ -151,6 +153,47 @@
             <div><strong id="metric-memory">—</strong><span>MiB</span></div>
             <small>Allocated linear memory capacity</small>
           </article>
+        </section>
+        <section class="latency panel" aria-labelledby="latency-title">
+          <div class="panel-heading">
+            <h2 id="latency-title">Where the time goes</h2>
+            <span class="tag">LATEST RESULT</span>
+          </div>
+          <p id="latency-summary">
+            Run a sample or speak to measure the delay.
+          </p>
+          <dl class="latency-grid">
+            <div>
+              <dt>Collecting utterance</dt>
+              <dd id="latency-collection">—</dd>
+            </div>
+            <div>
+              <dt>Waiting in queue</dt>
+              <dd id="latency-queue">—</dd>
+            </div>
+            <div>
+              <dt>Preparing audio</dt>
+              <dd id="latency-preparation">—</dd>
+            </div>
+            <div>
+              <dt>Sending to worker</dt>
+              <dd id="latency-dispatch">—</dd>
+            </div>
+            <div>
+              <dt>WASM call</dt>
+              <dd id="latency-inference">—</dd>
+            </div>
+            <div>
+              <dt>Delivering result</dt>
+              <dd id="latency-delivery">—</dd>
+            </div>
+          </dl>
+          <p class="latency-note">
+            The speed multiplier measures the WASM call, including audio copying
+            and result parsing. Other waits are separate. Microphone timing
+            starts when audio arrives in the page; device input latency and
+            speech playback are excluded.
+          </p>
         </section>
         <section class="details">
           <div>

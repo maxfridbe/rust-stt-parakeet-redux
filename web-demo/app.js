@@ -2,6 +2,7 @@ import { Microphone, concatenate, decodeFile, resample } from "./audio.js";
 import { LiveSegmenter, stableWordCount } from "./live.js";
 import { SpeechEcho } from "./speech.js";
 import { PreviewPolicy } from "./preview-policy.js";
+import { pipelineTiming, timestamp } from "./timing.js";
 
 const element = (id) => document.getElementById(id);
 const worker = new Worker(new URL("./worker.js", import.meta.url), {
@@ -12,7 +13,7 @@ const previewPolicy = new PreviewPolicy({
   conservative: matchMedia("(pointer: coarse)").matches,
 });
 const echo = new SpeechEcho(element("voice"), (message) => {
-  element("live-status").textContent = message;
+  element("echo-status").textContent = message;
 });
 const state = {
   ready: false,
@@ -28,6 +29,7 @@ const state = {
   spoken: new Map(),
   takes: 0,
   session: 0,
+  workerStartedAt: null,
 };
 let segmenter;
 let stopTimer;
@@ -78,7 +80,32 @@ function updateControls() {
     element("transcript-state").textContent = state.recording
       ? "LISTENING"
       : "READY";
+  updateQueueStatus();
 }
+
+function updateQueueStatus() {
+  const queuedSeconds = state.pending.reduce(
+    (sum, job) => sum + job.samples.length / job.rate,
+    0,
+  );
+  const queued = `${queuedSeconds.toFixed(1)}s audio waiting`;
+  if (!state.busy) {
+    element("queue-status").textContent = state.recording
+      ? `Listening · ${queued}`
+      : "No inference running";
+    return;
+  }
+  const age = (timestamp() - state.busy.enqueuedAt) / 1000;
+  const stage =
+    state.workerStartedAt == null
+      ? "Preparing / sending audio"
+      : "WASM processing";
+  element("queue-status").textContent =
+    `${stage} · ${age.toFixed(1)}s since submission · ${queued}`;
+}
+setInterval(() => {
+  if (state.busy) updateQueueStatus();
+}, 250);
 
 element("load-model").onclick = () => {
   clearError();
@@ -108,6 +135,9 @@ worker.onmessage = ({ data }) => {
       `Download ${(data.downloadMs / 1000).toFixed(2)}s · initialization ${(data.loadMs / 1000).toFixed(2)}s · single CPU worker`;
   }
   if (data.type === "result") receiveResult(data);
+  if (data.type === "started" && data.id === state.busy?.id) {
+    state.workerStartedAt = data.startedAt;
+  }
   if (data.type === "error") {
     showError(new Error(data.message));
     if (!state.ready) {
@@ -139,6 +169,8 @@ function resetSession() {
   state.previews.clear();
   state.spoken.clear();
   echo.cancel();
+  element("echo-status").textContent = "";
+  element("latency-summary").textContent = "Timing the next result…";
   clearError();
   element("transcript").classList.remove("placeholder");
   element("transcript").textContent = "Listening…";
@@ -149,7 +181,7 @@ function enqueue(snapshot) {
   // A preview is useful only if it can start now. Never let one delay finals.
   if (!snapshot.final && (state.busy || state.pending.length)) return;
   snapshot.session = state.session;
-  snapshot.capturedAt = performance.now();
+  snapshot.enqueuedAt = timestamp();
   snapshot.id = state.nextId++;
   // Replace obsolete previews for this utterance; preserve every final chunk.
   state.pending = state.pending.filter(
@@ -164,12 +196,14 @@ async function processNext() {
   if (state.busy || !state.pending.length) return;
   const job = state.pending.shift();
   state.busy = job;
+  state.workerStartedAt = null;
+  job.processingStartedAt = timestamp();
   updateControls();
   try {
     const samples = await resample(job.samples, job.rate);
     if (samples.length < 320)
       throw new Error("Record at least 20 ms of audio.");
-    job.dispatchedAt = performance.now();
+    job.dispatchedAt = timestamp();
     worker.postMessage({ type: "transcribe", id: job.id, samples }, [
       samples.buffer,
     ]);
@@ -182,6 +216,7 @@ async function processNext() {
 }
 
 function receiveResult(data) {
+  const receivedAt = timestamp();
   const job = state.busy;
   if (!job || data.id !== job.id) return;
   const previous = state.previews.get(job.segment)?.words ?? [];
@@ -207,7 +242,7 @@ function receiveResult(data) {
     state.previews.delete(job.segment);
   } else state.previews.set(job.segment, { text: data.result.text, words });
   renderTranscript();
-  updateMetrics(data, job);
+  updateMetrics(data, job, receivedAt);
   state.busy = null;
   processNext();
 }
@@ -230,7 +265,7 @@ function renderTranscript() {
   element("copy").disabled = !ids.length;
 }
 
-function updateMetrics(data, job) {
+function updateMetrics(data, job, receivedAt) {
   const seconds = data.inferenceMs / 1000;
   const duration = data.result.duration_seconds;
   const speed = duration / seconds;
@@ -244,9 +279,24 @@ function updateMetrics(data, job) {
   );
   element("token-count").textContent =
     `${data.result.tokens.length} tokens · ${job.final ? "final" : "preview"}`;
-  const age = (performance.now() - job.capturedAt) / 1000;
+  const timing = pipelineTiming(job, data, receivedAt);
+  const age = timing.submittedToResultMs / 1000;
   element("live-status").textContent =
-    `${job.final ? "Final" : "Preview"} result ${age.toFixed(2)}s after capture · ${state.pending.length} waiting${speed < 1 ? " · slower than real time" : ""}`;
+    `${job.final ? "Final" : "Preview"} result ${age.toFixed(2)}s after submission${speed < 1 ? " · slower than real time" : ""}`;
+  const formatMs = (value) => (value == null ? "—" : `${value.toFixed(1)} ms`);
+  for (const [id, value] of Object.entries({
+    "latency-collection": timing.collectionMs,
+    "latency-queue": timing.queueMs,
+    "latency-preparation": timing.preparationMs,
+    "latency-dispatch": timing.dispatchMs,
+    "latency-inference": timing.inferenceMs,
+    "latency-delivery": timing.deliveryMs,
+  }))
+    element(id).textContent = formatMs(value);
+  element("latency-summary").textContent =
+    timing.speechToResultMs == null
+      ? `${age.toFixed(2)}s from submission to result.`
+      : `${(timing.speechToResultMs / 1000).toFixed(2)}s since last detected speech, including ${(timing.speechWaitMs / 1000).toFixed(2)}s waiting to submit.`;
   element("history").querySelector(".empty-history")?.remove();
   const row = document.createElement("tr");
   for (const value of [
